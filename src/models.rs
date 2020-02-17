@@ -1,8 +1,6 @@
 use diesel::prelude::*;
 use diesel::result::Error;
 
-type DieselResult<T> = Result<T, diesel::result::Error>;
-
 use crate::schema::{food, food_group};
 
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone)]
@@ -17,19 +15,20 @@ pub struct FoodGroup {
 #[table_name = "food"]
 pub struct Food {
     pub id: i32,
+    pub food_group_id: i32,
     pub short_desc: String,
     pub long_desc: String,
 }
 
 
-#[derive(Serialize, Queryable, Debug, Clone)]
-pub struct FoodGroupAndFoods {
-    pub foodgroup_id: i32,
-    pub foodgroup_name: String,
-    pub food_id: i32,
-    pub food_long_desc: String,
+#[derive(Serialize, Queryable, PartialEq, Debug, Clone)]
+pub struct JoinResult {
+    pub food_group_id: i32,
+    pub name: String,
+    pub id: i32,
+    pub short_desc: String,
+    pub long_desc: String,
 }
-
 
 impl Food {
     pub fn all(conn: &SqliteConnection) -> Vec<Food> {
@@ -57,11 +56,11 @@ impl FoodGroup {
             .unwrap()
     }
 
-    pub fn all_foods_in_foodgroup(conn: &SqliteConnection) -> DieselResult<Vec<(FoodGroup, Food)>> {
-        use crate::schema::food_group::dsl::*;
-        use crate::schema::food::dsl::*;
+    pub fn all_foods_in_foodgroup(conn: &SqliteConnection) -> Vec<JoinResult> {
+        //use crate::schema::*;
 
-        crate::schema::food::table.inner_join(crate::schema::food_group::table)
-            .load::<FoodGroup>(conn)
+        food_group::table.inner_join(food::table)
+            .select((food_group::id, food_group::name, food::id, food::short_desc, food::long_desc))
+            .load::<JoinResult>(conn).unwrap()
     }
 }

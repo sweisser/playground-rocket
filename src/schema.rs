@@ -2,8 +2,9 @@
 table! {
     food (id) {
         id -> Integer,
-        short_desc -> Text,
+        food_group_id -> Integer,
         long_desc -> Text,
+        short_desc -> Text,
     }
 }
 
@@ -15,3 +16,8 @@ table! {
 }
 
 joinable!(food -> food_group (food_group_id));
+
+allow_tables_to_appear_in_same_query!(
+    food,
+    food_group,
+);
