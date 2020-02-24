@@ -1,7 +1,8 @@
 use diesel::prelude::*;
 use diesel::result::Error;
 
-use crate::schema::{food, food_group};
+use crate::schema::{food, food_group, nutrition, nutrient};
+
 
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone)]
 #[table_name = "food_group"]
@@ -30,6 +31,12 @@ pub struct JoinResult {
     pub long_desc: String,
 }
 
+#[derive(Serialize, Queryable, PartialEq, Debug, Clone)]
+pub struct JoinResult2 {
+    pub food_id: i32,
+    pub amount: f32,
+}
+
 impl Food {
     pub fn all(conn: &SqliteConnection) -> Vec<Food> {
         use crate::schema::food::dsl::*;
@@ -42,8 +49,26 @@ impl Food {
     pub fn get_by_id(conn: &SqliteConnection, food_id: i32) -> Result<Food, Error> {
         use crate::schema::food::dsl::*;
 
-        food.filter(crate::schema::food::dsl::id.eq(food_id))
+        food.filter(id.eq(food_id))
             .first(conn)
+    }
+
+    pub fn get_nutrients(conn: &SqliteConnection) -> Vec<JoinResult2> {
+        let res = food::table
+            .inner_join(nutrition::table.on(food::id.eq(nutrition::food_id)))
+            .inner_join(nutrient::table.on(nutrition::nutrient_id.eq(nutrient::id)))
+            .select((food::id, nutrition::amount))
+            .load::<JoinResult2>(conn).unwrap();
+        return res;
+    }
+
+
+    pub fn search(conn: &SqliteConnection, search_string: String) -> Vec<Food> {
+        use crate::schema::food::dsl::*;
+
+        food.filter(short_desc.like(search_string))
+            .load::<Food>(conn)
+            .unwrap()
     }
 }
 
@@ -56,9 +81,14 @@ impl FoodGroup {
             .unwrap()
     }
 
-    pub fn all_foods_in_foodgroup(conn: &SqliteConnection) -> Vec<JoinResult> {
-        //use crate::schema::*;
+    pub fn get_by_id(conn: &SqliteConnection, foodgroup_id: i32) -> Result<FoodGroup, Error> {
+        use crate::schema::food_group::dsl::*;
 
+        food_group.filter(id.eq(foodgroup_id))
+            .first(conn)
+    }
+
+    pub fn all_foods_in_foodgroup(conn: &SqliteConnection) -> Vec<JoinResult> {
         food_group::table.inner_join(food::table)
             .select((food_group::id, food_group::name, food::id, food::short_desc, food::long_desc))
             .load::<JoinResult>(conn).unwrap()
