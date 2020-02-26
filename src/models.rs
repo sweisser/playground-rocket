@@ -3,7 +3,6 @@ use diesel::result::Error;
 
 use crate::schema::{food, food_group, nutrition, nutrient};
 
-
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone)]
 #[table_name = "food_group"]
 pub struct FoodGroup {
@@ -21,7 +20,6 @@ pub struct Food {
     pub long_desc: String,
 }
 
-
 #[derive(Serialize, Queryable, PartialEq, Debug, Clone)]
 pub struct JoinResult {
     pub food_group_id: i32,
@@ -34,7 +32,12 @@ pub struct JoinResult {
 #[derive(Serialize, Queryable, PartialEq, Debug, Clone)]
 pub struct JoinResult2 {
     pub food_id: i32,
+    pub short_desc: String,
+    pub long_desc: String,
+    pub name: String,
     pub amount: f32,
+    pub units: String,
+    pub num_decimal_places: String,
 }
 
 impl Food {
@@ -53,15 +56,36 @@ impl Food {
             .first(conn)
     }
 
-    pub fn get_nutrients(conn: &SqliteConnection) -> Vec<JoinResult2> {
+    pub fn get_nutrients(conn: &SqliteConnection, food_id: i32) -> Vec<JoinResult2> {
         let res = food::table
             .inner_join(nutrition::table.on(food::id.eq(nutrition::food_id)))
             .inner_join(nutrient::table.on(nutrition::nutrient_id.eq(nutrient::id)))
-            .select((food::id, nutrition::amount))
+            .filter(food::id.eq(food_id))
+            .select((food::id,
+                     food::short_desc,
+                     food::long_desc,
+                     nutrient::name,
+                     nutrition::amount,
+                     nutrient::units,
+                     nutrient::num_decimal_places))
             .load::<JoinResult2>(conn).unwrap();
         return res;
     }
 
+    pub fn get_nutrients_all(conn: &SqliteConnection) -> Vec<JoinResult2> {
+        let res = food::table
+            .inner_join(nutrition::table.on(food::id.eq(nutrition::food_id)))
+            .inner_join(nutrient::table.on(nutrition::nutrient_id.eq(nutrient::id)))
+            .select((food::id,
+                     food::short_desc,
+                     food::long_desc,
+                     nutrient::name,
+                     nutrition::amount,
+                     nutrient::units,
+                     nutrient::num_decimal_places))
+            .load::<JoinResult2>(conn).unwrap();
+        return res;
+    }
 
     pub fn search(conn: &SqliteConnection, search_string: String) -> Vec<Food> {
         use crate::schema::food::dsl::*;
