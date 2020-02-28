@@ -1,21 +1,23 @@
 #![feature(plugin, const_fn, proc_macro_hygiene, decl_macro)]
 // #![plugin(rocket_codegen)]
 
+extern crate prometheus;
 #[macro_use] extern crate rocket;
 #[macro_use] extern crate rocket_contrib;
-extern crate prometheus;
 
+use std::collections::HashMap;
+use std::net::SocketAddr;
+
+use diesel::{Connection, SqliteConnection};
+use prometheus::IntCounter;
+use rocket::State;
 use rocket::http::RawStr;
 use rocket_contrib::databases::diesel;
 use rocket_contrib::json::Json;
-use playground_rocket::models::{Food, FoodGroup, JoinResult, JoinResult2};
-use prometheus::IntCounter;
 use rocket_prometheus::PrometheusMetrics;
-use std::net::SocketAddr;
+
 use playground_rocket::cors::CorsFairing;
-use rocket::State;
-use diesel::{SqliteConnection, Connection};
-use std::collections::HashMap;
+use playground_rocket::models::{Food, FoodGroup, JoinResult, JoinResult2};
 
 #[database("usda")]
 struct USDADbConn(diesel::SqliteConnection);
@@ -35,12 +37,12 @@ impl GlobalAppState {
     fn new(prometheus: PrometheusMetrics) -> (PrometheusMetrics, GlobalAppState) {
         // Create new instance
         let instance = GlobalAppState {
-            allfoods_counter: IntCounter::new("allfoods_counter_new", "allfoods_counter_new")
-                .expect("Could not create lazy IntCounter"),
-            allfoodgroups_counter: IntCounter::new("allfoodgroups_counter", "allfoodgroups_counter")
-                .expect("Could not create lazy IntCounter"),
             index_counter: IntCounter::new("index_counter", "index_counter")
-                .expect("Could not create lazy IntCounter"),
+                .expect("Could not create IntCounter"),
+            allfoods_counter: IntCounter::new("allfoods_counter", "allfoods_counter")
+                .expect("Could not create IntCounter"),
+            allfoodgroups_counter: IntCounter::new("allfoodgroups_counter", "allfoodgroups_counter")
+                .expect("Could not create IntCounter"),
             foods: GlobalAppState::get_foods(),
             foods_and_nutrients: GlobalAppState::get_nutrients(),
         };
@@ -89,10 +91,24 @@ impl GlobalAppState {
 }
 
 #[get("/")]
-fn index(counter: State<GlobalAppState>) -> &'static str {
+fn index(counter: State<GlobalAppState>) -> String {
     counter.index_counter.inc();
 
-    "Ready to serve!"
+    let msg = format!("Ready to serve!\n{}\n\n\
+    /food\n\
+    /food/<id>\n\
+    /food/<id>/nutrients\n", get_version());
+
+    msg
+}
+
+fn get_version() -> String {
+    String::from(env!("CARGO_PKG_VERSION"))
+}
+
+#[get("/ip")]
+fn ip_man(remote_addr: SocketAddr) -> String {
+    format!("Remote Address: {}", remote_addr.ip())
 }
 
 #[get("/food")]
@@ -124,7 +140,7 @@ fn get_nutrients(state: State<GlobalAppState>, food_id: i32) -> Json<Vec<JoinRes
     Json(nutrients.clone())
 }
 
-
+// TODO check the search string! SQL Injection!
 #[get("/food?<search_string>")]
 fn search_food(search_string: &RawStr, conn: USDADbConn) -> Json<Vec<Food>> {
     let search = format!("%{}%", search_string.as_str());
@@ -149,11 +165,6 @@ fn get_joined_food_groups(conn: USDADbConn) -> Json<Vec<JoinResult>> {
     Json(FoodGroup::all_foods_in_foodgroup(&*conn))
 }
 
-#[get("/ip")]
-fn ip_man(remote_addr: SocketAddr) -> String {
-    format!("Remote Address: {}", remote_addr.ip())
-}
-
 
 fn main() {
     let prometheus = PrometheusMetrics::new();
@@ -164,8 +175,8 @@ fn main() {
             get_all_foods,
             get_food_by_id,
             get_nutrients,
-            search_food,
-            get_all_foodgroups, get_foodgroup_by_id,
+            get_all_foodgroups,
+            get_foodgroup_by_id,
             get_joined_food_groups,
             ip_man
             ])
@@ -174,4 +185,14 @@ fn main() {
         .attach(CorsFairing)
         .manage(global_state)
         .launch();
+}
+
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_search_string() {
+        //let a = Fr
+        //assert_eq!("abc", )
+    }
 }
