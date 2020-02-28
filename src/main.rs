@@ -20,11 +20,14 @@ use std::collections::HashMap;
 #[database("usda")]
 struct USDADbConn(diesel::SqliteConnection);
 
+// TODO Split prometheus counters and cache
 struct GlobalAppState {
     allfoods_counter: IntCounter,
     allfoodgroups_counter: IntCounter,
     index_counter: IntCounter,
 
+    // caches
+    foods: Vec<Food>,
     foods_and_nutrients: HashMap<i32, Vec<JoinResult2>>,
 }
 
@@ -38,6 +41,7 @@ impl GlobalAppState {
                 .expect("Could not create lazy IntCounter"),
             index_counter: IntCounter::new("index_counter", "index_counter")
                 .expect("Could not create lazy IntCounter"),
+            foods: GlobalAppState::get_foods(),
             foods_and_nutrients: GlobalAppState::get_nutrients(),
         };
 
@@ -54,6 +58,12 @@ impl GlobalAppState {
         return (prometheus, instance);
     }
 
+    fn get_foods() -> Vec<Food> {
+        let conn = SqliteConnection::establish("usda.sqlite").unwrap();
+        let all_foods = Food::all(&conn);
+        return all_foods;
+    }
+
     fn get_nutrients() -> HashMap<i32, Vec<JoinResult2>> {
         let conn = SqliteConnection::establish("usda.sqlite").unwrap();
         let all_nutrients_vec = Food::get_nutrients_all(&conn);
@@ -63,7 +73,7 @@ impl GlobalAppState {
             .for_each(|x| {
                 let food_id = x.food_id;
                 let clone = x.clone();
-                let mut v1 = hashmap.get_mut(&food_id);
+                let v1 = hashmap.get_mut(&food_id);
                 match v1 {
                     Some(v2) => {
                         v2.push(clone);
@@ -86,27 +96,34 @@ fn index(counter: State<GlobalAppState>) -> &'static str {
 }
 
 #[get("/food")]
-fn get_all_foods(conn: USDADbConn, counter: State<GlobalAppState>) -> Json<Vec<Food>> {
-    counter.allfoods_counter.inc();
+fn get_all_foods(state: State<GlobalAppState>) -> Json<Vec<Food>> {
+    state.allfoods_counter.inc();
 
-    Json(Food::all(&*conn))
+    Json(state.foods.clone())
+}
+
+// TODO Use Hashmap for fast lookup. Can be HashMap<food_id> -> arrayindex
+#[get("/food/<food_id>")]
+fn get_food_by_id(state: State<GlobalAppState>, food_id: i32) -> Json<Option<Food>> {
+    let food_opt = state.foods
+        .iter()
+        .find(|x| x.id == food_id);
+    return match food_opt {
+        Some(food) => {
+            Json(Some(food.clone()))
+        },
+        None => {
+            Json(Option::None)
+        }
+    }
 }
 
 #[get("/food/<food_id>/nutrients")]
-fn get_food_nutrients_by_id(food_id: i32, conn: USDADbConn) -> Json<Vec<JoinResult2>> {
-    Json(Food::get_nutrients(&*conn, food_id))
-}
-
-#[get("/nutrients/<food_id>")]
-fn get_nutrients(conn: USDADbConn, state: State<GlobalAppState>, food_id: i32) -> Json<Vec<JoinResult2>> {
+fn get_nutrients(state: State<GlobalAppState>, food_id: i32) -> Json<Vec<JoinResult2>> {
     let nutrients = state.foods_and_nutrients.get(&food_id).unwrap();
     Json(nutrients.clone())
 }
 
-#[get("/food/<food_id>")]
-fn get_food_by_id(food_id: i32, conn: USDADbConn) -> Json<Food> {
-    Json(Food::get_by_id(&*conn, food_id).unwrap())
-}
 
 #[get("/food?<search_string>")]
 fn search_food(search_string: &RawStr, conn: USDADbConn) -> Json<Vec<Food>> {
@@ -138,14 +155,14 @@ fn ip_man(remote_addr: SocketAddr) -> String {
 }
 
 
-
 fn main() {
     let prometheus = PrometheusMetrics::new();
     let (prometheus, global_state) = GlobalAppState::new(prometheus);
 
     rocket::ignite()
         .mount("/", routes![index,
-            get_all_foods, get_food_by_id, get_food_nutrients_by_id,
+            get_all_foods,
+            get_food_by_id,
             get_nutrients,
             search_food,
             get_all_foodgroups, get_foodgroup_by_id,
