@@ -214,6 +214,7 @@ fn get_joined_food_groups(conn: USDADbConn) -> Json<Vec<JoinResult>> {
 fn main() {
     let prometheus = PrometheusMetrics::new();
     let (prometheus, prometheus_state) = PrometheusState::new(prometheus);
+    let cache_state = CachesState::new();
 
     rocket::ignite()
         .mount("/", routes![index,
@@ -230,6 +231,7 @@ fn main() {
         .attach(USDADbConn::fairing())
         .attach(CorsFairing)
         .manage(prometheus_state)
+        .manage(cache_state)
         .launch();
 }
 
