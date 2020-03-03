@@ -6,3 +6,4 @@ extern crate dotenv;
 pub mod schema;
 pub mod models;
 pub mod cors;
+pub mod data;

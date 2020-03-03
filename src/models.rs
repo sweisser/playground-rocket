@@ -34,9 +34,11 @@ pub struct JoinResult2 {
     pub food_id: i32,
     pub short_desc: String,
     pub long_desc: String,
+    pub nutrient_id: i32,
     pub name: String,
     pub amount: f32,
     pub units: String,
+    // TODO Parse these...
     pub num_decimal_places: String,
 }
 
@@ -64,6 +66,7 @@ impl Food {
             .select((food::id,
                      food::short_desc,
                      food::long_desc,
+                     nutrient::id,
                      nutrient::name,
                      nutrition::amount,
                      nutrient::units,
@@ -79,6 +82,7 @@ impl Food {
             .select((food::id,
                      food::short_desc,
                      food::long_desc,
+                     nutrient::id,
                      nutrient::name,
                      nutrition::amount,
                      nutrient::units,

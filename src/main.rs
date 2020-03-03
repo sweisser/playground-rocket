@@ -18,33 +18,31 @@ use rocket_prometheus::PrometheusMetrics;
 
 use playground_rocket::cors::CorsFairing;
 use playground_rocket::models::{Food, FoodGroup, JoinResult, JoinResult2};
+use playground_rocket::data::{FoodNutrients, map_to_food_nutrients};
 
 #[database("usda")]
 struct USDADbConn(diesel::SqliteConnection);
 
-// TODO Split prometheus counters and cache
-struct GlobalAppState {
+// DONE Split prometheus counters and cache
+struct PrometheusState {
     allfoods_counter: IntCounter,
     allfoodgroups_counter: IntCounter,
-    index_counter: IntCounter,
-
-    // caches
-    foods: Vec<Food>,
-    foods_and_nutrients: HashMap<i32, Vec<JoinResult2>>,
+    nutrients_counter: IntCounter,
+    index_counter: IntCounter
 }
 
-impl GlobalAppState {
-    fn new(prometheus: PrometheusMetrics) -> (PrometheusMetrics, GlobalAppState) {
+impl PrometheusState {
+    fn new(prometheus: PrometheusMetrics) -> (PrometheusMetrics, PrometheusState) {
         // Create new instance
-        let instance = GlobalAppState {
+        let instance = PrometheusState {
             index_counter: IntCounter::new("index_counter", "index_counter")
                 .expect("Could not create IntCounter"),
             allfoods_counter: IntCounter::new("allfoods_counter", "allfoods_counter")
                 .expect("Could not create IntCounter"),
             allfoodgroups_counter: IntCounter::new("allfoodgroups_counter", "allfoodgroups_counter")
                 .expect("Could not create IntCounter"),
-            foods: GlobalAppState::get_foods(),
-            foods_and_nutrients: GlobalAppState::get_nutrients(),
+            nutrients_counter: IntCounter::new("nutrients_counter", "nutrients_counter")
+                .expect("Could not create IntCounter"),
         };
 
         prometheus.registry()
@@ -56,8 +54,27 @@ impl GlobalAppState {
         prometheus.registry()
             .register(Box::new(instance.index_counter.clone()))
             .unwrap();
+        prometheus.registry()
+            .register(Box::new(instance.nutrients_counter.clone()))
+            .unwrap();
 
         return (prometheus, instance);
+    }
+}
+
+struct CachesState {
+    foods: Vec<Food>,
+    foods_and_nutrients: HashMap<i32, Vec<JoinResult2>>,
+}
+
+impl CachesState {
+    fn new() -> CachesState {
+        // Create new instance
+        let instance = CachesState {
+            foods: CachesState::get_foods(),
+            foods_and_nutrients: CachesState::get_nutrients(),
+        };
+        return instance;
     }
 
     fn get_foods() -> Vec<Food> {
@@ -90,8 +107,9 @@ impl GlobalAppState {
     }
 }
 
+
 #[get("/")]
-fn index(counter: State<GlobalAppState>) -> String {
+fn index(counter: State<PrometheusState>) -> String {
     counter.index_counter.inc();
 
     let msg = format!("Ready to serve!\n{}\n\n\
@@ -112,15 +130,16 @@ fn ip_man(remote_addr: SocketAddr) -> String {
 }
 
 #[get("/food")]
-fn get_all_foods(state: State<GlobalAppState>) -> Json<Vec<Food>> {
-    state.allfoods_counter.inc();
+fn get_all_foods(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, ) -> Json<Vec<Food>> {
+    prometheus_state.allfoods_counter.inc();
 
-    Json(state.foods.clone())
+    Json(cache_state.foods.clone())
 }
 
-// TODO Use Hashmap for fast lookup. Can be HashMap<food_id> -> arrayindex
+// TODO Use Hashmap for fast lookup instead of iterating through whole array.
+// TODO Can be HashMap<food_id> -> arrayindex.
 #[get("/food/<food_id>")]
-fn get_food_by_id(state: State<GlobalAppState>, food_id: i32) -> Json<Option<Food>> {
+fn get_food_by_id(state: State<CachesState>, food_id: i32) -> Json<Option<Food>> {
     let food_opt = state.foods
         .iter()
         .find(|x| x.id == food_id);
@@ -135,12 +154,38 @@ fn get_food_by_id(state: State<GlobalAppState>, food_id: i32) -> Json<Option<Foo
 }
 
 #[get("/food/<food_id>/nutrients")]
-fn get_nutrients(state: State<GlobalAppState>, food_id: i32) -> Json<Vec<JoinResult2>> {
-    let nutrients = state.foods_and_nutrients.get(&food_id).unwrap();
-    Json(nutrients.clone())
+fn get_nutrients(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, food_id: i32) -> Option<Json<Vec<JoinResult2>>> {
+    prometheus_state.nutrients_counter.inc();
+
+    return match cache_state.foods_and_nutrients.get(&food_id) {
+        Some(x) => Some(Json(x.clone())),
+        None => None
+    }
+}
+
+#[get("/v2/food/<food_id>/nutrients")]
+fn get_nutrients_v2(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, food_id: i32) -> Option<Json<FoodNutrients>> {
+    prometheus_state.nutrients_counter.inc();
+
+    return match cache_state.foods_and_nutrients.get(&food_id) {
+        Some(nutrients) => {
+            match map_to_food_nutrients(nutrients) {
+                Some (nutrients_v2) => {
+                    Some(Json(nutrients_v2.clone()))
+                },
+                None => {
+                    None
+                }
+            }
+        },
+        None => {
+            None
+        }
+    }
 }
 
 // TODO check the search string! SQL Injection!
+// TODO Write a Rocket Request Guard for the search_string
 #[get("/food?<search_string>")]
 fn search_food(search_string: &RawStr, conn: USDADbConn) -> Json<Vec<Food>> {
     let search = format!("%{}%", search_string.as_str());
@@ -149,7 +194,7 @@ fn search_food(search_string: &RawStr, conn: USDADbConn) -> Json<Vec<Food>> {
 }
 
 #[get("/foodgroup")]
-fn get_all_foodgroups(conn: USDADbConn, counter: State<GlobalAppState>) -> Json<Vec<FoodGroup>> {
+fn get_all_foodgroups(conn: USDADbConn, counter: State<PrometheusState>) -> Json<Vec<FoodGroup>> {
     counter.allfoodgroups_counter.inc();
 
     Json(FoodGroup::all(&*conn))
@@ -168,13 +213,14 @@ fn get_joined_food_groups(conn: USDADbConn) -> Json<Vec<JoinResult>> {
 
 fn main() {
     let prometheus = PrometheusMetrics::new();
-    let (prometheus, global_state) = GlobalAppState::new(prometheus);
+    let (prometheus, prometheus_state) = PrometheusState::new(prometheus);
 
     rocket::ignite()
         .mount("/", routes![index,
             get_all_foods,
             get_food_by_id,
             get_nutrients,
+            get_nutrients_v2,
             get_all_foodgroups,
             get_foodgroup_by_id,
             get_joined_food_groups,
@@ -183,16 +229,7 @@ fn main() {
         .mount("/metrics", prometheus)
         .attach(USDADbConn::fairing())
         .attach(CorsFairing)
-        .manage(global_state)
+        .manage(prometheus_state)
         .launch();
 }
 
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_search_string() {
-        //let a = Fr
-        //assert_eq!("abc", )
-    }
-}
