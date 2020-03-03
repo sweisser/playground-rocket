@@ -38,7 +38,6 @@ pub struct JoinResult2 {
     pub name: String,
     pub amount: f32,
     pub units: String,
-    // TODO Parse these...
     pub num_decimal_places: String,
 }
 
