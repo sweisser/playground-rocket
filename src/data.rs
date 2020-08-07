@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use crate::models::JoinResult2;
+use crate::models::FoodAndNutrients;
 
 // The following are the data structures for the business logic tier.
-#[derive(Serialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, PartialEq, Debug, Clone, JsonSchema)]
 pub struct NutrientEntry {
     pub nutrient_id: i32,
     pub name: String,
@@ -11,7 +11,7 @@ pub struct NutrientEntry {
     pub num_decimal_places: u8,
 }
 
-#[derive(Serialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, PartialEq, Debug, Clone, JsonSchema)]
 pub struct FoodNutrients {
     pub food_id: i32,
     pub short_desc: String,
@@ -30,7 +30,7 @@ impl FoodNutrients {
     }
 }
 
-pub fn map_to_food_nutrients(nutrient_array: &Vec<JoinResult2>) -> Option<FoodNutrients>{
+pub fn map_to_food_nutrients(nutrient_array: &Vec<FoodAndNutrients>) -> Option<FoodNutrients>{
     return match nutrient_array.first() {
         Some(first) => {
             let food_nutrients2 = nutrient_array.iter().fold(FoodNutrients {
@@ -61,14 +61,14 @@ pub fn map_to_food_nutrients(nutrient_array: &Vec<JoinResult2>) -> Option<FoodNu
 
 #[cfg(test)]
 mod tests {
-    use crate::models::JoinResult2;
+    use crate::models::FoodAndNutrients;
     use crate::data::{FoodNutrients, NutrientEntry, map_to_food_nutrients};
     use std::collections::HashMap;
 
     #[test]
     fn test_nutrient_array_to_hash() {
         let array = vec![
-            JoinResult2 {
+            FoodAndNutrients {
                 food_id: 1,
                 short_desc: "food1".to_string(),
                 long_desc: "food1_long".to_string(),
@@ -78,7 +78,7 @@ mod tests {
                 units: "g".to_string(),
                 num_decimal_places: "2".to_string()
             },
-            JoinResult2 {
+            FoodAndNutrients {
                 food_id: 1,
                 short_desc: "food1".to_string(),
                 long_desc: "food1_long".to_string(),
@@ -88,7 +88,7 @@ mod tests {
                 units: "g".to_string(),
                 num_decimal_places: "2".to_string()
             },
-            JoinResult2 {
+            FoodAndNutrients {
                 food_id: 1,
                 short_desc: "food1".to_string(),
                 long_desc: "food1_long".to_string(),

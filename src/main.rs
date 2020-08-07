@@ -2,23 +2,38 @@
 // #![plugin(rocket_codegen)]
 
 extern crate prometheus;
-#[macro_use] extern crate rocket;
-#[macro_use] extern crate rocket_contrib;
+
+extern crate rocket;
+
+#[macro_use]
+extern crate rocket_contrib;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use diesel::{Connection, SqliteConnection};
+
 use prometheus::IntCounter;
+
+use rocket::get;
 use rocket::State;
-use rocket::http::RawStr;
+
 use rocket_contrib::databases::diesel;
 use rocket_contrib::json::Json;
+
 use rocket_prometheus::PrometheusMetrics;
 
+use rocket_okapi::{openapi, routes_with_openapi};
+use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
+
 use playground_rocket::cors::CorsFairing;
-use playground_rocket::models::{Food, FoodGroup, JoinResult, JoinResult2};
+use playground_rocket::models::{Food, FoodGroup, FoodsInFoodGroup, FoodAndNutrients};
 use playground_rocket::data::{FoodNutrients, map_to_food_nutrients};
+
+fn get_version() -> String {
+    String::from(env!("CARGO_PKG_VERSION"))
+}
+
 
 #[database("usda")]
 struct USDADbConn(diesel::SqliteConnection);
@@ -64,7 +79,7 @@ impl PrometheusState {
 
 struct CachesState {
     foods: Vec<Food>,
-    foods_and_nutrients: HashMap<i32, Vec<JoinResult2>>,
+    foods_and_nutrients: HashMap<i32, Vec<FoodAndNutrients>>,
 }
 
 impl CachesState {
@@ -83,10 +98,10 @@ impl CachesState {
         return all_foods;
     }
 
-    fn get_nutrients() -> HashMap<i32, Vec<JoinResult2>> {
+    fn get_nutrients() -> HashMap<i32, Vec<FoodAndNutrients>> {
         let conn = SqliteConnection::establish("usda.sqlite").unwrap();
         let all_nutrients_vec = Food::get_nutrients_all(&conn);
-        let mut hashmap: HashMap<i32, Vec<JoinResult2>> = HashMap::with_capacity(all_nutrients_vec.len());
+        let mut hashmap: HashMap<i32, Vec<FoodAndNutrients>> = HashMap::with_capacity(all_nutrients_vec.len());
 
         all_nutrients_vec.iter()
             .for_each(|x| {
@@ -107,12 +122,13 @@ impl CachesState {
     }
 }
 
-
+#[openapi]
 #[get("/")]
 fn index(counter: State<PrometheusState>) -> String {
     counter.index_counter.inc();
 
     let msg = format!("Ready to serve!\n{}\n\n\
+    /ip\n\
     /food\n\
     /food/<id>\n\
     /food/<id>/nutrients\n", get_version());
@@ -120,24 +136,24 @@ fn index(counter: State<PrometheusState>) -> String {
     msg
 }
 
-fn get_version() -> String {
-    String::from(env!("CARGO_PKG_VERSION"))
-}
-
+#[openapi]
 #[get("/ip")]
 fn ip_man(remote_addr: SocketAddr) -> String {
     format!("Remote Address: {}", remote_addr.ip())
 }
 
+
+#[openapi]
 #[get("/food")]
 fn get_all_foods(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, ) -> Json<Vec<Food>> {
     prometheus_state.allfoods_counter.inc();
-
-    Json(cache_state.foods.clone())
+    let result = cache_state.foods.clone();
+    Json(result)
 }
 
 // TODO Use Hashmap for fast lookup instead of iterating through whole array.
 // TODO Can be HashMap<food_id> -> arrayindex.
+#[openapi]
 #[get("/food/<food_id>")]
 fn get_food_by_id(state: State<CachesState>, food_id: i32) -> Json<Option<Food>> {
     let food_opt = state.foods
@@ -153,8 +169,9 @@ fn get_food_by_id(state: State<CachesState>, food_id: i32) -> Json<Option<Food>>
     }
 }
 
+#[openapi]
 #[get("/food/<food_id>/nutrients")]
-fn get_nutrients(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, food_id: i32) -> Option<Json<Vec<JoinResult2>>> {
+fn get_nutrients(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, food_id: i32) -> Option<Json<Vec<FoodAndNutrients>>> {
     prometheus_state.nutrients_counter.inc();
 
     return match cache_state.foods_and_nutrients.get(&food_id) {
@@ -163,6 +180,7 @@ fn get_nutrients(prometheus_state: State<PrometheusState>, cache_state: State<Ca
     }
 }
 
+#[openapi]
 #[get("/v2/food/<food_id>/nutrients")]
 fn get_nutrients_v2(prometheus_state: State<PrometheusState>, cache_state: State<CachesState>, food_id: i32) -> Option<Json<FoodNutrients>> {
     prometheus_state.nutrients_counter.inc();
@@ -186,13 +204,15 @@ fn get_nutrients_v2(prometheus_state: State<PrometheusState>, cache_state: State
 
 // TODO check the search string! SQL Injection!
 // TODO Write a Rocket Request Guard for the search_string
+#[openapi]
 #[get("/food?<search_string>")]
-fn search_food(search_string: &RawStr, conn: USDADbConn) -> Json<Vec<Food>> {
+fn search_food(search_string: String, conn: USDADbConn) -> Json<Vec<Food>> {
     let search = format!("%{}%", search_string.as_str());
     let t1 = Food::search(&*conn, search.to_string());
     return Json(t1);
 }
 
+#[openapi]
 #[get("/foodgroup")]
 fn get_all_foodgroups(conn: USDADbConn, counter: State<PrometheusState>) -> Json<Vec<FoodGroup>> {
     counter.allfoodgroups_counter.inc();
@@ -200,14 +220,27 @@ fn get_all_foodgroups(conn: USDADbConn, counter: State<PrometheusState>) -> Json
     Json(FoodGroup::all(&*conn))
 }
 
+#[openapi]
 #[get("/foodgroup/<foodgroup_id>")]
 fn get_foodgroup_by_id(foodgroup_id: i32, conn: USDADbConn) -> Json<FoodGroup> {
     Json(FoodGroup::get_by_id(&*conn, foodgroup_id).unwrap())
 }
 
-#[get("/jointest")]
-fn get_joined_food_groups(conn: USDADbConn) -> Json<Vec<JoinResult>> {
+#[openapi]
+#[get("/foodgroup/foods")]
+fn get_joined_food_groups(conn: USDADbConn) -> Json<Vec<FoodsInFoodGroup>> {
     Json(FoodGroup::all_foods_in_foodgroup(&*conn))
+}
+
+/// Swagger
+fn get_docs() -> SwaggerUIConfig {
+    use rocket_okapi::swagger_ui::UrlObject;
+
+    SwaggerUIConfig {
+        url: "../openapi.json".to_string(),
+        urls: vec![UrlObject::new("My Resource", "../openapi.json")],
+        ..Default::default()
+    }
 }
 
 
@@ -217,21 +250,22 @@ fn main() {
     let cache_state = CachesState::new();
 
     rocket::ignite()
-        .mount("/", routes![index,
-            get_all_foods,
-            get_food_by_id,
-            get_nutrients,
-            get_nutrients_v2,
+        .mount("/", routes_with_openapi![
+            index,
+            ip_man,
             get_all_foodgroups,
+            get_food_by_id,
             get_foodgroup_by_id,
             get_joined_food_groups,
-            ip_man
+            get_all_foods,
+            get_nutrients,
+            get_nutrients_v2,
             ])
         .mount("/metrics", prometheus)
+        .mount("/swagger", make_swagger_ui(&get_docs()))
         .attach(USDADbConn::fairing())
         .attach(CorsFairing)
         .manage(prometheus_state)
         .manage(cache_state)
         .launch();
 }
-
