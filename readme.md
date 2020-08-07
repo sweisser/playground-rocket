@@ -6,6 +6,7 @@ A little playground project to get familiar writing web services in Rust. Uses:
 - Diesel as ORM
 - SQLite as database
 - Prometheus for monitoring
+- Swagger UI using Rocket Okapi
 
 The application serves some data of the USDA food database.
 

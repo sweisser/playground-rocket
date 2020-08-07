@@ -130,12 +130,12 @@ mod tests {
             num_decimal_places: 2
         });
 
-        assert_eq!(expected, map_to_food_nutrients(array).unwrap());
+        assert_eq!(expected, map_to_food_nutrients(&array).unwrap());
     }
 
     #[test]
     fn test_nutrient_array_to_hash_empty_array() {
-        let result = map_to_food_nutrients(vec![]);
+        let result = map_to_food_nutrients(&vec![]);
         assert!(result.is_none())
     }
 }

@@ -3,6 +3,7 @@ use diesel::result::Error;
 
 use crate::schema::{food, food_group, nutrition, nutrient};
 use rocket_okapi::JsonSchema;
+use crate::schema::food_group::dsl::*;
 
 
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone, JsonSchema)]
@@ -21,7 +22,6 @@ pub struct Food {
     pub short_desc: String,
     pub long_desc: String,
 }
-
 
 #[derive(Serialize, Queryable, PartialEq, Debug, Clone, JsonSchema)]
 pub struct FoodsInFoodGroup {
@@ -46,17 +46,13 @@ pub struct FoodAndNutrients {
 
 impl Food {
     pub fn all(conn: &SqliteConnection) -> Vec<Food> {
-        use crate::schema::food::dsl::*;
-
-        food.order(crate::schema::food::dsl::id.asc())
+        crate::schema::food::dsl::food.order(crate::schema::food::dsl::id.asc())
             .load::<Food>(conn)
             .unwrap()
     }
 
     pub fn get_by_id(conn: &SqliteConnection, food_id: i32) -> Result<Food, Error> {
-        use crate::schema::food::dsl::*;
-
-        food.filter(id.eq(food_id))
+        crate::schema::food::dsl::food.filter(crate::schema::food::dsl::id.eq(food_id))
             .first(conn)
     }
 
@@ -94,9 +90,9 @@ impl Food {
     }
 
     pub fn search(conn: &SqliteConnection, search_string: String) -> Vec<Food> {
-        use crate::schema::food::dsl::*;
+        //use crate::schema::food::dsl::*;
 
-        food.filter(short_desc.like(search_string))
+        crate::schema::food::dsl::food.filter(crate::schema::food::dsl::short_desc.like(search_string))
             .load::<Food>(conn)
             .unwrap()
     }
@@ -104,16 +100,12 @@ impl Food {
 
 impl FoodGroup {
     pub fn all(conn: &SqliteConnection) -> Vec<FoodGroup> {
-        use crate::schema::food_group::dsl::*;
-
         food_group.order(crate::schema::food_group::dsl::id.asc())
             .load::<FoodGroup>(conn)
             .unwrap()
     }
 
     pub fn get_by_id(conn: &SqliteConnection, foodgroup_id: i32) -> Result<FoodGroup, Error> {
-        use crate::schema::food_group::dsl::*;
-
         food_group.filter(id.eq(foodgroup_id))
             .first(conn)
     }
