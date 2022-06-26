@@ -1,4 +1,4 @@
-#![feature(plugin, const_fn, proc_macro_hygiene, decl_macro)]
+#![feature(plugin, proc_macro_hygiene, decl_macro)]
 #[macro_use]
 extern crate diesel;
 

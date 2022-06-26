@@ -1,0 +1,17 @@
+[Unit]
+Description=nutrition service
+After=network.target
+
+[Service]
+ExecStart=/home/stefan/services/nutrition/playground-rocket
+Restart=always
+User=stefan
+WorkingDirectory=/home/stefan/services/nutrition
+Environment="ROCKET_ENV=prod"
+Environment="ROCKET_ADDRESS=0.0.0.0"
+Environment="ROCKET_PORT=8000"
+Environment="ROCKET_LOG=critical"
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,4 +1,4 @@
-#![feature(plugin, const_fn, proc_macro_hygiene, decl_macro)]
+#![feature(plugin, proc_macro_hygiene, decl_macro)]
 // #![plugin(rocket_codegen)]
 
 extern crate prometheus;
@@ -27,18 +27,19 @@ use rocket_okapi::{openapi, routes_with_openapi};
 use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 
 use playground_rocket::cors::CorsFairing;
-use playground_rocket::models::{Food, FoodGroup, FoodsInFoodGroup, FoodAndNutrients};
+use playground_rocket::models::{Food, FoodGroup, FoodsInFoodGroup, FoodAndNutrients, Nutrient};
 use playground_rocket::data::{FoodNutrients, map_to_food_nutrients};
 
 fn get_version() -> String {
     String::from(env!("CARGO_PKG_VERSION"))
 }
 
+// TODO Add OAuth 2.0 just for fun (using Keycloak or Login with Github or Google)
+
 
 #[database("usda")]
 struct USDADbConn(diesel::SqliteConnection);
 
-// DONE Split prometheus counters and cache
 struct PrometheusState {
     allfoods_counter: IntCounter,
     allfoodgroups_counter: IntCounter,
@@ -202,6 +203,13 @@ fn get_nutrients_v2(prometheus_state: State<PrometheusState>, cache_state: State
     }
 }
 
+#[openapi]
+#[get("/nutrients")]
+fn nutrients(conn: USDADbConn) -> Json<Vec<Nutrient>> {
+    let all = Nutrient::all(&*conn);
+    return Json(all);
+}
+
 // TODO check the search string! SQL Injection!
 // TODO Write a Rocket Request Guard for the search_string
 #[openapi]
@@ -253,6 +261,7 @@ fn main() {
         .mount("/", routes_with_openapi![
             index,
             ip_man,
+            nutrients,
             get_all_foodgroups,
             get_food_by_id,
             get_foodgroup_by_id,

@@ -1,8 +1,9 @@
 use diesel::prelude::*;
 use diesel::result::Error;
 
-use crate::schema::{food, food_group, nutrition, nutrient};
 use rocket_okapi::JsonSchema;
+
+use crate::schema::{food, food_group, nutrition, nutrient};
 use crate::schema::food_group::dsl::*;
 
 
@@ -22,6 +23,18 @@ pub struct Food {
     pub short_desc: String,
     pub long_desc: String,
 }
+
+#[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone, JsonSchema)]
+#[table_name = "nutrient"]
+pub struct Nutrient {
+    pub id: i32,
+    pub units: String,
+    pub tagname: String,
+    pub name: String,
+    pub num_decimal_places: String,
+    pub sr_order: i32,
+}
+
 
 #[derive(Serialize, Queryable, PartialEq, Debug, Clone, JsonSchema)]
 pub struct FoodsInFoodGroup {
@@ -114,5 +127,14 @@ impl FoodGroup {
         food_group::table.inner_join(food::table)
             .select((food_group::id, food_group::name, food::id, food::short_desc, food::long_desc))
             .load::<FoodsInFoodGroup>(conn).unwrap()
+    }
+}
+
+
+impl Nutrient {
+    pub fn all(conn: &SqliteConnection) -> Vec<Nutrient> {
+        crate::schema::nutrient::dsl::nutrient.order(crate::schema::nutrient::dsl::id.asc())
+            .load::<Nutrient>(conn)
+            .unwrap()
     }
 }
