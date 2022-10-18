@@ -3,20 +3,21 @@ use diesel::result::Error;
 
 use rocket_okapi::JsonSchema;
 
-use crate::schema::{food, food_group, nutrition, nutrient};
-use crate::schema::food_group::dsl::*;
+//use crate::schema::{food, food_group, nutrition, nutrient};
+use crate::schema::food_group::id;
+use crate::schema::food_group::dsl::food_group;
 
 
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone, JsonSchema)]
-#[table_name = "food_group"]
+#[diesel(belongs_to(FoodGroup, foreign_key = id))]
 pub struct FoodGroup {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(Serialize, Queryable, Identifiable, Associations, PartialEq, Debug, Clone, JsonSchema)]
-#[belongs_to(FoodGroup, foreign_key="id")]
-#[table_name = "food"]
+#[diesel(belongs_to(FoodGroup, foreign_key = id))]
+#[diesel(table_name = food)]
 pub struct Food {
     pub id: i32,
     pub food_group_id: i32,
@@ -25,7 +26,7 @@ pub struct Food {
 }
 
 #[derive(Serialize, Queryable, Identifiable, PartialEq, Debug, Clone, JsonSchema)]
-#[table_name = "nutrient"]
+#[diesel(table_name = nutrient)]
 pub struct Nutrient {
     pub id: i32,
     pub units: String,
